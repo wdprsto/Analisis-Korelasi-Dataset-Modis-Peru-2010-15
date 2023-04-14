@@ -1,0 +1,619 @@
+---
+title: "Modis Peru 2010-2015"
+output: html_notebook
+---
+
+# ANALISIS KORELASI PADA DATA FIRE MODIS MENGGUNAKAN PRINCIPAL COMPONENET ANALYSIS (STUDI KASUS: NEGARA PERU, TAHUN 2010-2015)
+### Nama: Wahyu Dwi Prasetio
+### NPM : G1A019010
+### Tugas UAS Mata Kuliah Data Mining
+
+```{r}
+# install.packages("corrplot")
+# install.packages("psych")
+# install.packages("GPArotation")
+# install.packages("ggfortify")
+# install.packages('caret')
+```
+
+```{r}
+
+library(factoextra) #Visualisasi PCA
+library(ggfortify) #Visualisasi scatter plot
+library(corrplot) #Visualisasi Matriks Korelasi
+library(psych) #Untuk factor analysis
+library(GPArotation) #prasyarat faktor analysis
+library(GPArotation) #prasyarat faktor analysis
+library(caret) #untuk cross validation
+```
+
+# A. Business Understanding
+
+MODIS merupakan singkatan dari MODerate resolution Imaging Spectroradiometer. MODIS merupakan instrumen kunci dalam satelit NASA Aqua & Terra, dan didesain khusus untuk mendeteksi kebakaran hutan [[Kemenhut](http://kebakaranhutan.or.id/map/fire_modis)]. MODIS Global Fires adalah produk dari Sistem Data dan Informasi Sistem Pengamatan Bumi NASA (EOSDIS), bagian dari Data Sains Bumi NASA. EOSDIS mengintegrasikan teknologi penginderaan jauh dan GIS untuk memberikan lokasi hotspot/kebakaran MODIS global kepada manajer sumber daya alam dan stakeholder lain di seluruh dunia [[Arcgis](https://www.arcgis.com/home/item.html?id=b8f4033069f141729ffb298b7418b653)]. NASA menyediakan data titik api aktif dari instrumen MODIS tersebut pada laman [FIRMS](https://firms.modaps.eosdis.nasa.gov/active_fire) yang memungkinkan publik untuk mengakses data titik api dalam rentang waktu tertentu. Dalam dataset tersebut, terdapat beberapa atribut yang tersedia, mulai dari lokasi latitude dan longitude, brightness, scan, track, acquired date, acquired time, satellite, instrument, confidence, version, bright_t31, frp, daynight, dan type. Melalui proses pengolahan data yang tepat, dapat diketahui variabel apa yang paling berperan pada data api tersebut.
+
+## A.1 Problem Statements dan Goals
+
+Berdasarkan permasalahan yang ada, akan dilakukan analisis korelasi untuk mempelajari kedekatan hubungan antara dua variabel atau lebih dan melihat sejauh mana variabel tersebut terkait satu sama lain.
+
+-   Dari serangkaian variabel yang ada, variabel apa yang paling berpengaruh pada data api?
+
+Untuk menjawab pertanyaan tersebut, akan dilakukan Principal Component Analysis (PCA) dengan Factor Analysis dengan tujuan sebagai berikut:
+
+-   Mengetahui variabel apa yang paling berperan pada data api.
+
+## A.2 Metodologi
+
+Principal Component Analysis digunakan untuk menganalisis variabel apa yang paling berpengaruh pada data api. Untuk mengetahui jumlah faktor/komponen optimum, dilakukan Factor Analysis.
+
+## A.3 Metriks
+
+Metriks yang digunakan untuk evaluasi adalah cross validation.
+
+# B. Data Understanding
+
+Data yang digunakan adalah data titik api yang diperoleh dari instrumen MODIS yang tersedia pada website NASA. Dataset yang dipilih merepresentasikan data titik api negara Peru pada rentang waktu 2010-2015. Data terdiri atas 87.282 record dengan variabel berjumlah 15. Adapun variabel-variabel pada dataset ini, yaitu: latitude, longitude, brightness, scan, track, acquired date, acquired time, satellite, instrument, confidence, version, bright_t31, frp, daynight, dan type.
+
+## B.1 Data Loading
+
+```{r}
+# Memuat data ke dalam objek data_frame
+data_modis <- read.delim(("modis_Peru.csv"), 
+                        sep=",", header = TRUE)
+```
+
+```{r}
+# Melihat sampel data
+head(data_modis)
+```
+
+```{r}
+# Mendeskripsikan struktur data
+str(data_modis)
+```
+
+Berdasarkan kode di atas, diperoleh informasi sebagai berikut:
+
+-   terdapat 87.282 baris record dalam dataset
+
+-   terdapat 15 variabel, yaitu latitude, longitude, brightness, scan, track, acquired date, acquired time, satellite, instrument, confidence, version, brightness, frp, daynight, dan type
+
+## B.2 Exploratory Data Analysis
+
+Variabel-variabel pada dataset titik api MODIS mewakili informasi yang dapat dijelaskan sebagai berikut [[Arcgis](https://www.arcgis.com/home/item.html?id=b8f4033069f141729ffb298b7418b653)].
+
+-   latitude & longitude\
+    Lokasi titik tengah pixel 1km yang ditandai mengandung satu atau lebih api/hotspot (ukuran api tidak 1km, tetapi bervariasi).
+
+-   brightness\
+    Temperatur kecerahan yang diukur (dalam Kelvin) menggunakan MODIS channel 21/22 dan channel 31.
+
+-   scan & track\
+    Resolusi spasial aktual dari pixel yang dipindai. Nilai scan menggambarkan resolusi spasial di arah timur-barat pemindaian dan nilai track menggambarkan resolusi spasial utara-selatan pemindaian. Meskipun algoritma bekerja pada resolusi 1km, pixel MODIS menjadi lebih besar menuju ke tepi pemindaian. Pixel di tepi "Timur" dan "Barat" pemindaian lebih besar dari 1 km. Ukuran 1 km ada disepanjang nadir (tepat vertikal dari satelit). Oleh karena itu, nilai yang ditampilkan untuk scan dan track menggambarkan resolusi spasial aktual dari pixel yang dipindai.
+
+-   acquired date & acquired time\
+    Tanggal akuisisi dari pixel hotspot/api aktif dan waktu lewat satelit dalam UTC (penyajian pelanggan dalam waktu lokal).
+
+-   satellite\
+    Satelit yang mendeteksi titik api tersebut, apakah Terra atau Aqua. Sebagai penambah konteks, instrumen MODIS terdapat pada satelit Pengamatan Bumi (EOS) Terra (EOS AM) dan Aqua (EOS PM) NASA. Orbit satelit Terra bergerak dari utara ke selatan melintasi khatulistiwa pada pagi hari dan Aqua melewati selatan ke utara di atas khatulistiwa pada sore hari, sehingga memberikan pengamatan global setiap 1-2 hari.
+
+-   instrument,\
+    Instrumen yang digunakan dalam pengumpulan data titik api. Pada kasus ini, instrumennya adalah MODIS. Instrumen lain yang dapat melakukan pendeteksian titik api adalah VIIRS S-NPP.
+
+-   confidence\
+    Kepercayaan deteksi adalah tanda kualitas dari tiap pixel titik api aktif/hotspot.
+
+-   version\
+    Versi mengacu pada koleksi pemrosesan dan sumber data. Angka sebelum titik desimal mengacu pada koleksi (misalnya MODIS Collection 6). Angka setelah titik desimal menunjukkan sumber data Level 1B; (1) data yang diproses dalam waktu hampir nyata oleh MODIS Rapid Response (MRR) akan memiliki kode sumber "CollectionNumber.0". (2) Data yang berasal dari MODAPS (dengan keterlambatan 2 bulan) dan diproses oleh FIRMS menggunakan algoritma MOD14/MYD14 Thermal Anomalies standar akan memiliki kode sumber "CollectionNumber.x".
+
+    Sebagai contoh, data dengan versi yang tercantum sebagai 5.0 adalah koleksi 5, diproses oleh MRR, data dengan versi yang tercantum sebagai 5.1 adalah data koleksi 5 yang diproses oleh FIRMS menggunakan data Level 1B dari MODAPS.
+
+-   bright_t31\
+    Temperatur kecerahan dari pixel hotspot/api aktif (dalam Kelvins) pada channel 31.
+
+-   frp\
+    Fire Radiative Power. Menggambarkan kekuatan radiatif api yang terintegrasi pixel dalam MW (MegaWatts). FRP memberikan informasi tentang keluaran panas yang terukur dari api yang terdeteksi. Jumlah panas radiasi yang dilepaskan per satuan waktu (Fire Radiative Power) dianggap terkait dengan tingkat bahan bakar yang terbakar (Wooster et. al. (2005)).
+
+-   daynight,\
+    Menandakan observasi titik api terjadi pada siang atau malam hari. [[Kaggle](https://www.kaggle.com/code/brsdincer/2017-2018-2019-2020-turkey-anomalies-investigation)]
+
+    -   D = titik api pada siang hari
+
+    -   N = titik api pada malam hari
+
+-   type\
+    Menandakan jenis observasi titik api.
+
+    -   0 = dugaan kebakaran vegetasi
+
+    -   1 = gunung berapi aktif
+
+    -   2 = sumber tanah statis lainnya
+
+    -   3 = deteksi lepas pantai (mencakup semua deteksi di permukaan air)
+
+Berdasarkan deskripsi variabel di atas, dapat diketahui bahwa
+
+-   terdapat 8 variabel yang bernilai numerik, yaitu latitude & longitude, brightness, scan & track, confidence, bright_t31, dan frp.
+
+-   terdapat 2 variabel yang bertipe data date, yaitu data acquired date & acquired time.
+
+-   terdapat 5 variabel yang bernilai kategori, yaitu satellite, instrument, version, daynight, dan type.
+
+Selanjutnya, dilakukan pengecekan terhadap informasi dalam dataset modis Peru 2010-2015.
+
+```{r}
+
+# melihat tipe data dari dataset
+var_data_type <- sapply(data_modis, class)
+data.frame(var_data_type)
+```
+
+Berdasarkan informasi tipe data di atas, tidak semua variabel memiliki tipe data yang sesuai.
+
+-   Variabel satellite, instrument, version, daynight, dan type akan diubah menjadi bertipe categorical/factor
+-   Variabel acq_date akan diubah menjadi bertipe date
+
+```{r}
+
+# Mengubah tipe data variabel ke tipe yang sesuai
+# Mengubah semua kelas bertipe karakter menjadi faktor
+data_modis_new <- as.data.frame(unclass(data_modis), stringsAsFactors = TRUE) #Metode `unclass` di R memungkinkan Anda untuk melihat bagaimana objek R tertentu disimpan.
+
+# Mengubah tipe data variabel 'type' dan 'version' dari angka menjadi factor
+data_modis_new$type <- as.factor(data_modis_new$type)
+data_modis_new$version <- as.factor(data_modis_new$version)
+
+# Mengubah tipe data variabel acq_date & acq_time menjadi date
+data_modis_new$acq_date <- as.Date(data_modis_new$acq_date)
+str(data_modis_new)
+data_modis_new
+```
+
+```{r}
+# Melihat nilai unik dari variabel bertipe chr, kolom type dan version
+cat(
+  "Satellite:", unique(data_modis$satellite),"",
+  "Instrument:", unique(data_modis$instrument),"",
+  "Version", unique(data_modis$version),"",
+  "DayNight:", unique(data_modis$daynight),"",
+  "Type:", unique(data_modis$type), sep="\n"
+)
+```
+
+Setelah tipe data disesuaikan, selanjutnya dilakukan pengecekan deskripsi statistik data menggunakan fungsi `summary`.
+
+```{r}
+
+# Melihat deskripsi statistik dari dataset melalui summary
+summary(data_modis_new)
+```
+
+Fungsi `summary` memberikan informasi statistik pada masing-masing variabel.
+
+-   Min merupakan nilai minimum setiap variabel. 
+
+-   Q1 adalah kuartil pertama. Kuartil adalah nilai yang menandai batas interval dalam empat bagian sebaran yang sama.
+
+-   Median merupakan nilai tengah, atau biasa juga disebut Q2/kuartil kedua.
+
+-   Q3 adalah kuartil ketiga.
+
+-   Max adalah nilai maksimum.
+
+-   Mean adalah nilai rata-rata.
+
+## B.3 EDA - Menangani Missing Value
+
+Sebelum melakukan analisis menggunakan PCA, perlu dipastikan bahwa tidak ada data yang bernilai null. Untuk itu, dilakukan pengecekan menggunakan fungsi di bawah ini.
+
+```{r}
+
+# Mengecek nilai null pada data
+na_count <- sapply(data_modis_new, function(x) sum(is.na(x)))
+data.frame(na_count)
+```
+
+Berdasarkan hasil pengecekan, tidak ada data yang bernilai null. Dengan demikian, tidak ada record bernilai null yang perlu dibuang dari dataset.
+
+## B.3 Univariate Analysis
+
+Pertama, dilakukan analisis untuk variabel kategorikal dengan nilai unik lebih dari atau sama dengan dua: satellite, daynight, dan type.
+
+```{r}
+
+jumlah <- table(data_modis_new$satellite)
+persentase <- 100*table(data_modis_new$satellite)/nrow(data_modis_new)
+df <- data.frame(jumlah_sampel=jumlah, persentase=round(persentase, 1))
+print(df)
+barplot(jumlah, main='Satellite', ylab='Frekuensi', border = "brown",
+)
+```
+
+Terdapat 2 jenis satellite, yaitu Aqua dan Terra. Dari informasi di atas diketahui bahwa 83.9% pengamatan titik api diperoleh dari satellite Aqua, dan 16.1% sisanya diperoleh dari satellite Aqua.
+
+```{r}
+
+jumlah <- table(data_modis_new$daynight)
+persentase <- 100*table(data_modis_new$daynight)/nrow(data_modis_new)
+df <- data.frame(jumlah_sampel=jumlah, persentase=round(persentase, 1))
+print(df)
+barplot(jumlah, main='DayNight', ylab='Frekuensi', border = "brown",
+)
+```
+
+Berdasarkan deskripsi variabel DayNigth, diketahui pengamatan titik api banyak diperoleh pada siang hari (Day), dengan persentase sebesar 96.7%.
+
+```{r}
+
+jumlah <- table(data_modis_new$type)
+persentase <- 100*table(data_modis_new$type)/nrow(data_modis_new)
+df <- data.frame(jumlah_sampel=jumlah, persentase=round(persentase, 1))
+print(df)
+barplot(jumlah, main='Type', ylab='Frekuensi', border = "brown",
+)
+```
+
+Berdasarkan informasi dari deskripsi variabel Type di atas, data titik api yang terdapat dalam dataset MODIS 99.9% atau 87190 observasi diantaranya diduga merupakan kebakaran vegetasi (tipe 0), diikuti dengan 45 observasi diduga deteksi lepas pantai (tipe 3), 42 observasi diduga sumber tanah staits lainnya (tipe 2), dan 5 observasi diduga gunung berapi aktif (tipe 1).
+
+Untuk fitur numerik, dapat dilihat histogram masing-masing fitur sebagai berikut.
+
+```{r}
+
+# Menentukan fitur numerik
+numeric_features <- sapply(data_modis_new, is.numeric)
+
+# Memplot semua fitur numerik dalam grid histogram
+par(mfrow=c(3,3)) # Menetapkan layout grid 4x4
+for (feature in names(data_modis_new)[numeric_features]) {
+  hist(data_modis_new[,feature], main=feature, col="blue")
+}
+
+```
+
+```{r}
+
+hist(data_modis_new$confidence, main="", col="blue")
+```
+
+Berdasarkan histogram di atas, dapat diperoleh informasi diantaranya:
+
+-   Peningkatan nilai brightness, scan, track, dan frp sebanding dengan penurunan jumlah sampel. Hal ini dapat dilihat dari histogram masing-masing variabel tersebut yang grafiknya mengalami penurunan seiring dengan semakin besarnya nilai variabel.
+
+-   Lebih dari setengah nilai confidence bernilai di atas 50.
+
+## B.4 Multivariate Analysis
+
+Pada tahapan ini, dilakukan pengamatan terhadap hubungan antarfitur numerik. Selain itu, dilakukan observasi korelasi.
+
+```{r}
+
+# pairs(data_modis_new[c('latitude', 'longitude', 'brightness', 'scan', 'track', 'confidence', 'bright_t31', 'frp')], col='blue')
+```
+
+Fungsi `pairs` pada R menunjukkan relasi pasangan dalam dataset. Korelasi pada fitur tampak dari adanya pola pada sebaran data. Sebaran data acak merupakan indikasi korelasi yang lemah (atau tidak ada korelasi sama sekali), sedangkan sebaran data yang memiliki pola (tidak acak) merupakan indikasi adanya korelasi. Pada pola sebaran data grafik di atas, terlihat adanya korelasi positif antara variabel "scan" dan "track". Korelasi positif ditandai dengan meningkatnya variabel pada sumbu y saat terjadi peningkatan variabel pada sumbu x. Selain itu, terlihat variabel "brightness" memiliki korelasi positif dengan variabel "frs". Korelasi juga terlihat antara variabel "brightness" dengan "bright_t31"
+
+```{r}
+
+matriks_korelasi <- cor(data_modis_new[c('latitude', 'longitude', 'brightness', 'scan', 'track', 'confidence', 'bright_t31', 'frp')])
+
+corrplot(matriks_korelasi, method="number", sig.level=0.05,  tl.cex=1)
+
+```
+
+Koefisien korelasi berkisar antara -1 dan +1. Koefisien ini mengukur kekuatan hubungan antara dua variabel serta arahnya (positif atau negatif). Semakin dekat nilainya ke 1 atau -1, korelasinya semakin kuat. Sedangkan semakin dekat nilainya ke 0, korelasinya semakin lemah. Korelasi positif berarti nilai kedua variabel cenderung meningkat bersama-sama, sedangkan korelasi negatif berarti nilai salah satu variabel cenderung meningkat ketika nilai variabel lainnya menurun. Pada grafik di atas, nilai korelasi positif yang besar terlihat antara variabel brightness dengan confidence, brightness dengan frp. Di sisi lain, korelasi negatif yang besar terlihat antara variabel latitude dan longitude.
+
+# C. Preprocessing
+
+Pada tahapan preprocessing, dilakukan serangkaian proses transformasi pada data sehingga menjadi bentuk yang cocok untuk proses analisis PCA nantinya.
+
+Sebelumnya, diketahui bahwa variabel "version" dan "instrument" hanya memiliki satu nilai unik, yaitu "6.2" untuk version dan "MODIS" untuk instrument. Maka dari itu, variabel ini tidak diikutkan karena tidak memberikan informasi yang berarti dalam proses analisis. Maka dari itu, variabel "version" dan "instrumen" akan dihapus dari dataset.
+
+```{r}
+
+# menghapus variabel dari dataset
+data_modis_prep <- data_modis_new[,!names(data_modis_new) %in% c("version", "instrument")]
+str(data_modis_prep)
+```
+
+## C.1 Encoding Fitur Kategori
+
+Proses encoding akan menghasilkan fitur baru yang sesuai sehingga dapat mewakili variabel kategori.Pada dataset MODIS Peru 2010-2015 yang penulis gunakan, variabel "satellite" dan "daynight" merupakan variabel bertipe kategorik yang hanya memiliki 2 nilai kategori. Metode encoding yang dapat digunakan ialah dummy coding. Karena hanya ada satu atribut yang dikodekan sebagai 1 dan yang lainnya sudah pasti 0, dummy encoding dikenal juga sebagai one-hot encoding (Lantz, 2019). Pada metode ini, nilai 1 mewakili sebuah kategori, dan 0 mewaliki kategori lainnya. Tidak perlu membuat variabel baru untuk kategori lainnya karena keduanya mutually exclusive, mengetahui salah satunya saja sudah cukup. Aspek yang nyaman dari pengkodean dummy adalah bahwa jarak antara fitur yang dikodekan dummy selalu satu atau nol, dan dengan demikian, nilainya jatuh pada skala yang sama dengan data numerik min-max yang dinormalisasi. Tidak diperlukan transformasi tambahan.
+
+```{r}
+
+# Memencode fitur satellite dan daynight menggunakan 0 dan 1
+data_modis_prep$satellite  <- ifelse(data_modis_prep$satellite=="Aqua", 0, 1)
+data_modis_prep$daynight  <- ifelse(data_modis_prep$daynight=="D", 0, 1)
+str(data_modis_prep)
+```
+
+Selain itu, juga terdapat variabel "type" yang memiliki 4 nilai kategori yang unik, yang mewakili 4 tipe titik api. Untuk mengencode data ini, digunakan metode label encoding yang merepresentasikan tiap kategori dalam nilai numerik [[AnalyticsVidia](https://www.analyticsvidhya.com/blog/2020/03/one-hot-encoding-vs-label-encoding-using-scikit-learn/)]. Nilai yang mewakili tiap tipe sesuai dengan nomor tipenya masing-masing, yaitu 0, 1, 2, dan 3.
+
+```{r}
+#type_encoded <- model.matrix(~ type - 1, data=data_modis_prep)
+#data_modis_prep <- data.frame(data_modis_prep, type_encoded)
+#data_modis_prep <- data_modis_prep[,!names(data_modis_prep) %in% c("type")]
+
+data_modis_prep$type <- as.numeric(data_modis_prep$type)
+str(data_modis_prep)
+```
+
+## C.2 Transformasi Data Date acq_date
+
+Agar informasi yang ada dalam variabel acq_date dan acq_time dapat ikut diolah, maka variabel tersebut perlu diubah ke dalam tipe data numerik dengan menggunakan fungsi `as.numeric()`. Namun, pertama-tama data tanggal dan jam perlu digabungkan terlebih dahulu, baru kemudian di ubah kedalam integer. Fungsi akan mengembalikan jumlah detik yang telah berlalu sejak tanggal 1/1/1970 (penanggalan awal pada Unix).
+
+```{r}
+# Mengubah format time ke jam:menit
+temp <- data_modis_prep$acq_time
+temp2 <- mapply(function(x, y) paste0(rep(x, y), collapse = ""), 0, 4 - nchar(temp))
+temp <- paste0(temp2, temp)
+data_modis_prep$acq_time <- format(strptime(temp, format="%H%M"), format = "%H:%M")
+
+# Menggabungkan data tanggal dan jam, lalu konversi ke waktu Unix
+datetime <- paste0(data_modis_prep$acq_date, " ", data_modis_prep$acq_time)
+datetime2 <- as.POSIXct(datetime)
+datetime3 <- as.numeric(datetime2)
+head(datetime3)
+
+# Mengubah nilai data tanggal menjadi datetime, lalu menghapus kolom jam
+data_modis_prep$acq_datetime <- datetime3
+data_modis_prep <- data_modis_prep[,!names(data_modis_prep) %in% c("acq_time", "acq_date")]
+str(data_modis_prep)
+```
+
+Hasil dari proses ini memiliki deskripsi sebagai berikut
+
+```{r}
+describe(data_modis_prep)
+```
+
+```{r}
+head(data_modis_prep)
+```
+
+# D. Number of Factors
+
+Tahapan ini bertujuan untuk menentukan jumlah faktor/komponen yang akan diekstrak. Metode yang digunakan untuk menentukan jumlah faktor ini ialah dengan menginspeksi scree plot [[Warfell, 2015](https://www.dominodatalab.com/blog/how-to-do-factor-analysis)]
+
+
+```{r}
+scree(data_modis_prep)
+```
+
+Pada scree plot, setiap faktor atau komponen tambahan hanya akan menghasilkan pengurangan nilai eigen secara marjinal setelah titik tertentu. Pengurangan yang tidak signifikan akan memberikan gambaran semacam 'siku' yang dihasilkan oleh grafik. Dengan mengikuti metode "Elbow Rule", didapatkan angka "5" sebagai angka tertinggi yang memenuhi, yang merupakan titik di mana nilai varians masih berkurang secara signifikan.
+
+Cara lain yang dapat digunakan untuk memeriksa ulang jumlah faktor yang akan diekstrak ialah menggunakan analisis paralel. Analisis pararel dalam [The Journal of Vegetaion Science](http://opensiuc.lib.siu.edu/cgi/viewcontent.cgi?article=1004&context=pb_pubs) dideskripsikan sebagai berikut: Dalam parallel analysis, nilai eigen dari sebuah data sebelum rotasi dibandingkan dengan nilai eigen dari matriks nilai acak dengan dimensi yang sama (p variabel dan n sampel). Tujuan dari perbandingan ini adalah untuk menentukan nilai eigen mana yang tidak signifikan dibandingkan dengan nilai eigen yang dihasilkan secara acak. Nilai eigen yang dianggap tidak signifikan adalah nilai eigen yang berada di bawah nilai eigen yang dihasilkan secara acak.
+
+
+```{r}
+
+fa.parallel(data_modis_prep, fm='ml')
+```
+
+Berdasrakan kode tersebut, paralel analysis menyarankan jumlah faktor bernilai 5 dan jumlah komponen bernilai 5. Pada kode tersebut, metode yang digunakan untuk estimasi skor faktor adalah "Maximum Likelihood" yang ditandai dengan parameter fm="ml".
+
+
+Dalam proses factor analysis, akan dilakukan interpretasi terhadap Rotation. Rotasi dapat dikategorikan menjadi dua, ortogonal dan oblique. Rotasi ortogonal mengasumsikan bahwa faktor-faktor yang ada tidak berkorelasi, sedangkan rotasi oblique mengasumsikan bahwa faktor-faktor tersebut berkorelasi. Dua jenis rotasi yang populer adalah Varimax (ortogonal), dan Oblimin (miring). Pada tahapan analisis ini, penulis menggunakan rotasi oblimin. [Warfel, 2015](https://www.dominodatalab.com/blog/how-to-do-factor-analysis)
+
+```{r}
+fa(data_modis_prep, 5, fm='ml', rotate='oblimin')
+```
+Berdasarkan output di atas, terlihat nilai RMSEA index sebesar 0.048. Nilai ini sudah memenuhi rule of thumb, di mana rule of thumb standard dari nilai RMSEA index ialah kurang dari .06.
+
+```{r}
+
+print(fa(data_modis_prep, 5, fm='ml',rotate='oblimin')$loadings,cut=.2)
+
+```
+Selanjutnya, dilakukan pengamatan terhadap faktor terakhir. Pada faktor ML5, nilai loadings yang dihasilkan tidak ada yang tinggi, yang menandakan bahwa faktor tersebut tidak penting. Untuk itu, dilakukan pengujian untuk nilai faktor=4.
+
+
+```{r}
+
+fa(data_modis_prep, 4, fm='ml', 'oblimin')
+
+```
+Metriks yang dihasilkan untuk faktor = 4 tidak begitu buruk, meskipun nilai RMSEA index mencapai 0.065. Selanjutnya, dilakukan inspeksi faktor sebagai berikut.
+
+```{r}
+
+print(fa(data_modis_prep, 4, fm='ml', rotate='oblimin')$loadings,cut=.2)
+
+```
+Pada tabel loading tersebut, terlihat bahwa variabel-variabel terkait dengan satu faktor utama.
+-   variabel scan dan track berkolerasi positif kuat dengan faktor ML3
+
+-   Variabel brightness, confidence, dan frp berkolerasi positif kuat dengan faktor ML1
+
+-   Variabel latitude berkorelasi positif kuat dengan faktor ML2, sedangkan variabel longitude berkolerasi positif kuat dengan faktor tersebut.
+
+-   Variabel daynight berkolerasi positif kuat dnegan faktor ML4
+
+Dengan demikian jumlah faktor yang dapat digunakan untuk proses analisis selanjutnya adalah 4.
+
+
+# E. Correlation Coefficient
+
+```{r}
+
+matriks_korelasi <- cor(data_modis_prep)
+data.frame(matriks_korelasi)
+corrplot(matriks_korelasi, method="number", sig.level=0.05,  tl.cex=1, 
+         addCoef.col = 1, number.cex = 0.8)
+
+```
+
+Berdasarkan hasil plot koefisien korelasi tersebut, dapat diketahui informasi sebagai berikut.
+-   Terdapat korelasi positif yang kuat antara brightness dan frp. Hal ini ditandai dengan nilai positif 0.67 yang menunjukkan adanya hubungan positif. Artinya, jika brightness (temperatur kecerahan, dalam Kelvin) meningkat, maka fire radiative power  juga cenderung meningkat, dan sebaliknya, jika brightness menurun, nilai kekuatan radiatif titik api juga cenderung menurun. Korelasi yang kuat dapat diartikan sebagai hubungan yang cukup kuat antara kedua variabel tersebut. Dengan 
+-   Terdapat korelasi yang kuat antara brightness dan confidence, dengan nilai 0.60. Artinya, jika brightness meningkat, confidence juga cenderung meningkat, dan sebaliknya, jika brightness menurun, frp juga cenderung menurun. Jadi, jika nilai temperatur kecerahan (dalam Kelvin) yang terdeteksi meningkat, besar kemungkinan nilai confidence/kepercayaannya juga besar.
+
+-   Terdapat korelasi yang sangat kuat terlihat antara variabel track dan scan, dengan nilai 0.98. Hal ini mungkin terjadi karena keduanya merupakan informasi tentang resolusi spasial dari pixel yang dipindai, yang saling terkait satu sama lain. Sebagai contoh, jika resolusi spasial di arah utara-selatan (track) meningkat, maka resolusi spasial di arah timur-barat (scan) juga mungkin akan meningkat, dan sebaliknya.
+
+-   Korelasi lainnya terlihat antara variabel brightness dan brigh_t31. Korelasi ini mungkin terjadi sebab keduanya sama-sama mengukur kecerahan, di mana variabel brightness mengukur temperatur kecerahan pada channel 21/22 dan 31, sedangkan temperatur bright_t31 mengukurnya pada channel 31 (sama-sama mengukur pada channel 31).
+
+-   Korelasi negatif yang kuat terlihat antara variabel latitude dan longitude. Hal ini dipengaruhi oleh kondisi geografis yang penulis analisis, yaitu negara Peru yang terletak di -12.433333, -77.283333.
+
+
+# F. Scatter Plot hasil PCA
+
+Principal Component Analysis dilakukan dengan menggunakan fungsi `prcomp`. Perlu diperhatikan bahwa normalisasi data merupakan hal yang penting untuk dilakukan sebelum melakukan PCA, sehingga perlu ditambahkan parameter scale = True. [[StackOverFlow](https://stats.stackexchange.com/questions/69157/why-do-we-need-to-normalize-data-before-principal-component-analysis-pca)].
+
+```{r}
+
+# Implementasi PCA
+modis_peru_pca <- prcomp(data_modis_prep,
+                   center = TRUE,
+                   scale. = TRUE,)
+
+summary(modis_peru_pca)
+```
+Untuk mengetahui variabel yang paling dominan dalam pembentukan principal component, penulis melihat matriks rotasi yang menunjukkan kontribusi masing-masing variabel terhadap setiap komponen utama. Setelah itu, urutkan kolom dari matriks tersebut berdasrakan nilai yang ada. Selanjutnya, dicari nilai indeks yang mengandung nilai terbesar dalam setiap komponen utama. Indeks kolom akan menunjukkan variabel apa yang paling banyak membentuk komponen utama.
+
+```{r}
+# Mengakses matriks rotasi
+rotation <- modis_peru_pca$rotation
+rotation
+
+# Mengetahui indeks kolom dengan nilai terbesar dalam setiap komponen utama, dimulai dari 0
+variables <- apply(rotation, 2, which.max)
+variables
+
+# Menentukan variabel apa yang paling banyak membentuk setiap komponen utama
+important_variables <- names(data_modis_prep)[variables]
+data.frame(PC=1:12, important_variables)
+data.frame(sort(table(important_variables), decreasing = TRUE))
+```
+
+
+Hasil PCA dapat divisualisasikan menggunakan Scatter Plot, dengan hasil sebagai berikut
+```{r}
+
+# Visualisasi dalam scatter plot
+fviz_pca(modis_peru_pca, label="none")
+```
+
+```{r}
+# Visualisasi menggunakan ggfortify
+autoplot(modis_peru_pca, data = data_modis_prep,
+         loadings = TRUE, loadings.colour = 'blue',
+         loadings.label = TRUE, loadings.label.size = 3)
+
+```
+Berdasarkan hasil scatter plot PCA di atas, terlihat nilai loadings terkonsentrasi pada 4 arah utama, 
+-   track dan scan memuat kuat di faktor pertama
+
+-   frp memuat kuat di faktor kedua
+
+-   brightness dan confidence memuat kuat di faktor ketiga
+
+-   bright_t31 memuat kuat di faktor keempat
+
+Sebelumnya, juga diketahui bahwa jumlah faktor utama yang baik adalah 4. Kita dapat mereduksi data yang awalnya terdiri dari 12 variabel menjadi 4 variabel namun tetap menggambarkan keragaman data
+
+```{r}
+
+data_modis_red <- modis_peru_pca$x[,1:4]
+head(data_modis_red)
+```
+
+Kita juga dapat mendapatkan hasil factor analysis menggunakan fungsi `factanal`.
+```{r}
+
+modis_peru_fa <- factanal(data_modis_fa, factors = 4, scores = 'regression', lower = 0.01)
+autoplot(modis_peru_fa, loadings = TRUE, loadings.label = TRUE, loadings.label.size  = 3)
+```
+
+```{r}
+# Mengakses matriks rotasi. Rotation juga bisa disebut sebagai loadings, 
+# yaitu vektor eigen atau koeffisien dari masing-masing variabel yang digunakan 
+# untuk membentuk komponen utama
+rotation_fa <- modis_peru_fa$loadings
+rotation_fa
+
+# Mengetahui indeks kolom dengan nilai terbesar dalam setiap komponen utama, dimulai dari 0
+variables_fa <- apply(rotation_fa, 2, which.max)
+variables_fa
+
+# Menentukan variabel apa yang paling banyak membentuk setiap komponen utama
+important_variables_fa <- names(data_modis_prep)[variables_fa]
+data.frame(PC=1:4, important_variables_fa)
+data.frame(sort(table(important_variables_fa), decreasing = TRUE))
+```
+
+
+Data hasil reduksi dimensi nantinya dapat digunakan untuk pembuatan model regresi.
+
+
+# G. Fitting Model Diagram
+
+Pada tahapan E, telah dilakukan analisi korelasi menggunakan matriks koefisien korelasi. Berdasarkan informasi tersebut, terdapat variabel yang memiliki korelasi yang sangat rendah, sehingga tidak akan diikutkan dalam proses pelatihan.Variabel-variabel yang tidak akan diikutkan dalam proses pelatihan tersebut diantaranya adalah type, acq_datetime, dan satellite.
+
+Selain itu, dalam linear regression dikenal jugo multicollinearity. Pada kasus ini, dua variabel memiliki nilai koefisien korelasi yang mendekati 1, seperti yang terjadi antara variabel scan dan track. Multicollinearity akan mempengaruhi kinerja dari model regresi yang dibuat. Untuk itu, kedua variabel ini juga akan dihapus.
+
+Dataset akan dibagi ke dalam data train dan test dengan persentase 70:30. Target dari regresi ini adalah nilai FRP atau fire radiative power.
+
+```{r}
+set.seed(43) # agar reproducable
+
+# Membagi data ke train dan test
+train_percentage = 0.7
+split <- sample(1:nrow(data_modis_final), size = floor(train_percentage * nrow(data_modis_final)))
+modis_train <- data_modis_final[split, ]
+modis_trainX <- modis_train[,!names(data_modis_prep) %in% c("frp")]
+# Standarisasi fitur dilakukan pada data latih untuk menghasilkan distribusi standard
+modis_trainX <- scale(modis_trainX, scale = TRUE)
+modis_trainY <- modis_train[, c("frp")]
+modis_train <- data.frame(modis_trainX, frp=modis_trainY)
+modis_train
+modis_test <- data_modis_final[-split, ]
+```
+
+Selanjutnya, dilakukan pemodelan menggunaan metode regresi, sehingga akan dihasilkan diagram pelatihan model.
+```{r}
+# Modelling
+# Melakukan training
+linreg <- lm(frp ~ latitude+longitude+brightness+confidence+bright_t31+daynight+scan+track, data = modis_train)
+
+# 4 var pca
+#linreg <- lm(frp ~ longitude+bright_t31+daynight+latitude, data = modis_train)
+
+# 4 var factal
+#linreg <- lm(frp ~ longitude+brightness+daynight+scan, data = modis_train)
+
+# Melakukan testing
+pred <- predict(linreg, modis_test) 
+
+data.frame(MAE = MAE(pred, modis_test$frp),
+           RMSE = RMSE(pred, modis_test$frp),
+           R2 = R2(pred, modis_test$frp))
+
+```
+
+```{r}
+
+plot(modis_test$frp, pred,
+     xlab = "True", ylab = "Pred",
+     main = "Hasil Prediksi dengan Linear Regression")
+abline(a=0, b=1, col = "green")
+```
+
+
+
+# H. Cross Validation
+
+Cross Validation digunakan untuk memvalidasi hasil pelatihan model regresi. 
+
+```{r}
+
+# Inisialisasi objek train control cross validation
+train_control <- trainControl(method = "cv", number = 10)
+
+# Lakukan pelatihan dengan linear regression
+linreg_cv <- train(frp ~ latitude+longitude+brightness+confidence+bright_t31+daynight+scan+track, 
+                   data = modis_train, method = "lm", trControl = train_control)
+
+# Print the results
+data.frame(nilai=t(linreg_cv$results))
+```
+
+Berdasarkan hasil evaluasi cross validation terhadap model linear regression yang dibuat, diperoleh nilai RMSE 0.5669, MAE 0.230, dan nilai Rsquare 0.683. Nilai evaluasi regresi yang kecil ini menandakan bahwa model yang dilatih telah mampu mempelajari dataset MODIS Peru 2010-2015 yang ada.
